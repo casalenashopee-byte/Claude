@@ -1,22 +1,16 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { generateRawToken, hashToken } from "@/lib/token";
 import { hashPassword } from "@/lib/auth";
 import { sendMail } from "@/lib/mailer";
+import { getAppOrigin } from "@/lib/origin";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export type FormState = { error?: string; success?: string } | undefined;
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
-
-async function getOrigin() {
-  const h = await headers();
-  const host = h.get("host") || "localhost:3000";
-  const proto = host.startsWith("localhost") ? "http" : "https";
-  return `${proto}://${host}`;
-}
 
 export async function requestPasswordResetAction(
   _prev: FormState,
@@ -24,6 +18,11 @@ export async function requestPasswordResetAction(
 ): Promise<FormState> {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   if (!email) return { error: "Informe seu e-mail." };
+
+  // A chave é o e-mail digitado, não se a conta existe — não vaza quem tem conta.
+  if (!checkRateLimit(`reset:${email}`, 5, 60 * 60 * 1000)) {
+    return { error: "Muitas solicitações para esse e-mail. Aguarde um pouco e tente novamente." };
+  }
 
   // Resposta sempre genérica — não revela se o e-mail existe (evita enumeração de contas).
   const genericSuccess = {
@@ -43,7 +42,7 @@ export async function requestPasswordResetAction(
     },
   });
 
-  const origin = await getOrigin();
+  const origin = await getAppOrigin();
   const link = `${origin}/redefinir-senha/${rawToken}`;
 
   const result = await sendMail({

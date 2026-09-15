@@ -23,6 +23,10 @@ export async function createServiceOrderAction(
   }
 
   const customerId = String(formData.get("customerId") || "") || null;
+  if (customerId) {
+    const customer = await prisma.customer.findFirst({ where: { id: customerId, userId: user.id } });
+    if (!customer) return { error: "Cliente inválido." };
+  }
   const customerName = String(formData.get("customerName") || "").trim() || null;
   const equipment = String(formData.get("equipment") || "").trim() || null;
   const imei = String(formData.get("imei") || "").trim() || null;

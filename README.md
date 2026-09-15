@@ -87,6 +87,32 @@ verdade) podem ser definidas no `.env` antes do `docker compose up` — veja
    Postgres).
 4. Publique normalmente na plataforma serverless de sua preferência.
 
+## Segurança & isolamento entre contas
+
+Cada tabela sensível guarda um `userId`, e toda leitura/escrita passa pela
+sessão logada (`requireUser()`) filtrando por esse `userId` — uma conta não
+enxerga produtos, vendas, clientes etc. de outra. Toda referência a um ID de
+outra tabela vinda do formulário (cliente, canal, produto, forma de
+pagamento, categoria, fornecedor) é conferida contra o dono antes de salvar,
+para que uma requisição adulterada não consiga vincular uma venda ao cliente
+de outra conta nem alterar o estoque de um produto alheio — o
+`tests/smoke.spec.ts` tem um teste dedicado a isso (cria uma segunda conta,
+forja o campo e confirma que o servidor recusa).
+
+Outros pontos:
+- Senha com bcrypt, sessão em cookie `httpOnly` assinado (JWT), nunca em `localStorage`.
+- Em produção, o app recusa subir com `AUTH_SECRET` fraco ou igual ao valor de exemplo.
+- Link de redefinição de senha usa `APP_URL` (não o header `Host` da
+  requisição, que pode ser forjado) — configure-o em produção.
+- Rate limiting simples (em memória) em login, registro e pedido de reset de
+  senha, para dificultar força bruta. Limitação conhecida: reseta ao
+  reiniciar o processo e não é compartilhado entre múltiplas instâncias.
+- `npm audit` limpo (0 vulnerabilidades) — veja o `overrides` no
+  `package.json` para a última correção aplicada.
+- Sem CAPTCHA/proteção contra criação em massa de contas em `/registrar` —
+  ok para uso interno, considere adicionar antes de abrir cadastro público
+  em grande escala.
+
 ## CI
 
 `.github/workflows/ci.yml` roda lint, typecheck e build a cada push/PR — o

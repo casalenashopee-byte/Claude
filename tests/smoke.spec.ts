@@ -66,6 +66,59 @@ test("registra uma venda e calcula o lucro corretamente", async ({ page }) => {
   await expect(page.getByText(/R\$\s*15,00/)).toBeVisible();
 });
 
+test("uma conta não consegue vincular uma venda ao cliente de outra conta (IDOR)", async ({ page, browser }) => {
+  // Conta "vítima": cria um cliente privado e guarda o ID real dele.
+  await login(page);
+  await page.goto("/clientes/novo");
+  await page.fill('input[name="name"]', "Cliente Privado da Vítima");
+  await Promise.all([
+    page.waitForURL("**/clientes"),
+    page.getByRole("button", { name: "Salvar" }).click(),
+  ]);
+  const editLink = page.locator('a[href^="/clientes/"]').first();
+  const victimCustomerId = (await editLink.getAttribute("href"))?.split("/").pop();
+  expect(victimCustomerId).toBeTruthy();
+
+  // Conta "atacante": nova sessão, nova conta, sem nenhum vínculo com a vítima.
+  const attackerContext = await browser.newContext();
+  const attackerPage = await attackerContext.newPage();
+  await attackerPage.goto("/registrar");
+  await attackerPage.fill('input[name="name"]', "Atacante");
+  await attackerPage.fill('input[name="email"]', `atacante-${Date.now()}@vendafacil.local`);
+  await attackerPage.fill('input[name="password"]', "senhaAtacante123");
+  await Promise.all([
+    attackerPage.waitForURL("**/dashboard"),
+    attackerPage.getByRole("button", { name: "Criar conta grátis" }).click(),
+  ]);
+
+  await attackerPage.goto("/vendas/nova");
+  await attackerPage.getByRole("button", { name: "Item avulso" }).click();
+
+  // Simula alguém adulterando o formulário (ex.: DevTools) para forjar o
+  // customerId — a UI normal nunca ofereceria o ID de outra conta aqui.
+  await attackerPage
+    .locator("select", { hasText: "Cliente cadastrado" })
+    .selectOption({ label: "Cliente cadastrado" });
+  await attackerPage.evaluate((victimId) => {
+    const select = document.querySelector('select[name="customerId"]') as HTMLSelectElement;
+    const opt = document.createElement("option");
+    opt.value = victimId as string;
+    opt.selected = true;
+    select.appendChild(opt);
+    select.value = victimId as string;
+  }, victimCustomerId);
+
+  await attackerPage.getByRole("button", { name: "Registrar venda" }).click();
+  await attackerPage.waitForTimeout(1000);
+
+  // Deve barrar no servidor: continua em /vendas/nova mostrando o erro,
+  // nunca cria a venda vinculada ao cliente de outra conta.
+  await expect(attackerPage).toHaveURL(/\/vendas\/nova$/);
+  await expect(attackerPage.getByText("Cliente inválido.")).toBeVisible();
+
+  await attackerContext.close();
+});
+
 test("manifest.webmanifest responde com ícones (PWA instalável)", async ({ request }) => {
   const res = await request.get("/manifest.webmanifest");
   expect(res.status()).toBe(200);

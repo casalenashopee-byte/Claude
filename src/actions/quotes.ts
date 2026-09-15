@@ -24,6 +24,10 @@ export async function createQuoteAction(
   if (items.length === 0) return { error: "Adicione ao menos um item." };
 
   const customerId = String(formData.get("customerId") || "") || null;
+  if (customerId) {
+    const customer = await prisma.customer.findFirst({ where: { id: customerId, userId: user.id } });
+    if (!customer) return { error: "Cliente inválido." };
+  }
   const customerName = String(formData.get("customerName") || "").trim() || null;
   const contact = String(formData.get("contact") || "").trim() || null;
   const document = String(formData.get("document") || "").trim() || null;

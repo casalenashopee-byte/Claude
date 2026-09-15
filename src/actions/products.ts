@@ -86,6 +86,38 @@ function parseFields(formData: FormData) {
   };
 }
 
+/**
+ * Confirma que categoria/fornecedor/canais escolhidos pertencem ao usuário
+ * logado, e descarta qualquer canal que não seja dele — sem isso, uma
+ * requisição forjada poderia amarrar o produto a dados de outra conta.
+ */
+async function validateOwnership(userId: string, data: ReturnType<typeof parseFields>) {
+  if (data.categoryId) {
+    const category = await prisma.category.findFirst({ where: { id: data.categoryId, userId } });
+    if (!category) return "Categoria inválida.";
+  }
+  if (data.supplierId) {
+    const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, userId } });
+    if (!supplier) return "Fornecedor inválido.";
+  }
+
+  let channelIds: string[] = [];
+  try {
+    channelIds = JSON.parse(data.channelIds || "[]");
+  } catch {
+    channelIds = [];
+  }
+  if (channelIds.length > 0) {
+    const owned = await prisma.channel.findMany({
+      where: { userId, id: { in: channelIds } },
+      select: { id: true },
+    });
+    data.channelIds = JSON.stringify(owned.map((c) => c.id));
+  }
+
+  return null;
+}
+
 export async function createProductAction(
   _prev: FormState,
   formData: FormData
@@ -95,6 +127,9 @@ export async function createProductAction(
   if (!data.name) return { error: "Informe o nome do produto." };
   if (!data.retailPrice || data.retailPrice <= 0)
     return { error: "Informe um preço de varejo válido." };
+
+  const ownershipError = await validateOwnership(user.id, data);
+  if (ownershipError) return { error: ownershipError };
 
   await prisma.product.create({ data: { userId: user.id, ...data } });
   revalidatePath("/produtos");
@@ -111,6 +146,9 @@ export async function updateProductAction(
   if (!data.name) return { error: "Informe o nome do produto." };
   if (!data.retailPrice || data.retailPrice <= 0)
     return { error: "Informe um preço de varejo válido." };
+
+  const ownershipError = await validateOwnership(user.id, data);
+  if (ownershipError) return { error: ownershipError };
 
   await prisma.product.updateMany({ where: { id, userId: user.id }, data });
   revalidatePath("/produtos");

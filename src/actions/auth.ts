@@ -10,6 +10,7 @@ import {
   verifyPassword,
 } from "@/lib/auth";
 import { provisionNewUser } from "@/lib/provision";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export type AuthState = { error?: string } | undefined;
 
@@ -22,6 +23,12 @@ export async function loginAction(
 
   if (!email || !password) {
     return { error: "Preencha e-mail e senha." };
+  }
+
+  // No máximo 10 tentativas a cada 15 min por e-mail — dificulta força
+  // bruta sem travar alguém que só errou a senha algumas vezes.
+  if (!checkRateLimit(`login:${email}`, 10, 15 * 60 * 1000)) {
+    return { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." };
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
@@ -53,6 +60,10 @@ export async function registerAction(
   }
   if (password.length < 8) {
     return { error: "A senha precisa ter pelo menos 8 caracteres." };
+  }
+
+  if (!checkRateLimit(`register:${email}`, 5, 60 * 60 * 1000)) {
+    return { error: "Muitas tentativas. Aguarde um pouco e tente novamente." };
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });

@@ -51,10 +51,33 @@ export async function createSaleAction(
   const extraCostsDesc = String(formData.get("extraCostsDesc") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
 
+  // Tudo que veio como ID do cliente (canal, cliente, produtos, formas de
+  // pagamento) precisa ser confirmado como dono do usuário logado — sem isso,
+  // uma requisição forjada poderia referenciar/alterar dados de outra conta.
+  const channel = await prisma.channel.findFirst({ where: { id: channelId, userId: user.id } });
+  if (!channel) return { error: "Canal de venda inválido." };
+
+  if (customerId) {
+    const customer = await prisma.customer.findFirst({ where: { id: customerId, userId: user.id } });
+    if (!customer) return { error: "Cliente inválido." };
+  }
+
+  const productIds = items.map((i) => i.productId).filter((id): id is string => !!id);
+  const ownedProducts = await prisma.product.findMany({
+    where: { userId: user.id, id: { in: productIds } },
+  });
+  const productMap = new Map(ownedProducts.map((p) => [p.id, p]));
+  if (productIds.some((id) => !productMap.has(id))) {
+    return { error: "Um dos produtos da venda é inválido." };
+  }
+
   const methods = await prisma.paymentMethod.findMany({
     where: { userId: user.id, id: { in: splits.map((s) => s.paymentMethodId) } },
   });
   const methodMap = new Map(methods.map((m) => [m.id, m]));
+  if (splits.some((s) => !methodMap.has(s.paymentMethodId))) {
+    return { error: "Uma das formas de pagamento é inválida." };
+  }
 
   const subtotal = round2(items.reduce((sum, i) => sum + i.qty * i.price, 0));
   const totalCost = round2(items.reduce((sum, i) => sum + i.qty * i.cost, 0));
@@ -106,7 +129,7 @@ export async function createSaleAction(
 
     for (const item of items) {
       if (!item.productId) continue;
-      const product = await tx.product.findUnique({ where: { id: item.productId } });
+      const product = productMap.get(item.productId);
       if (product && product.type === "FISICO") {
         await tx.product.update({
           where: { id: item.productId },
@@ -137,7 +160,7 @@ export async function deleteSaleAction(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     for (const item of sale.items) {
       if (!item.productId) continue;
-      const product = await tx.product.findUnique({ where: { id: item.productId } });
+      const product = await tx.product.findFirst({ where: { id: item.productId, userId: user.id } });
       if (product && product.type === "FISICO") {
         await tx.product.update({
           where: { id: item.productId },

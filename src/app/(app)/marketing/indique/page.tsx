@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -7,6 +6,7 @@ import { StatCard, StatGrid } from "@/components/ui/StatCard";
 import { CopyButton } from "@/components/CopyButton";
 import { WithdrawButton } from "./WithdrawButton";
 import { formatBRL } from "@/lib/calc";
+import { getAppOrigin } from "@/lib/origin";
 
 export default async function IndiquePage() {
   const user = await requireUser();
@@ -15,10 +15,8 @@ export default async function IndiquePage() {
     prisma.user.count({ where: { referredById: user.id } }),
   ]);
 
-  const hdrs = await headers();
-  const host = hdrs.get("host") || "localhost:3000";
-  const proto = host.startsWith("localhost") ? "http" : "https";
-  const link = `${proto}://${host}/registrar?ref=${user.referralCode}`;
+  const origin = await getAppOrigin();
+  const link = `${origin}/registrar?ref=${user.referralCode}`;
 
   return (
     <div>

@@ -25,7 +25,9 @@ export default defineConfig({
     timeout: 180_000,
     env: {
       DATABASE_URL: "file:./test.db",
-      AUTH_SECRET: "test-secret-nao-use-em-producao",
+      // "next start" roda em modo produção, que recusa segredos fracos/de
+      // exemplo (ver lib/auth.ts) — por isso um valor longo aqui, mesmo em teste.
+      AUTH_SECRET: "e2e-test-only-4f8a1c9d7e2b4f6a0c1d8e5b3a7f2c94-never-use-in-prod",
       SEED_USER_EMAIL: "teste@vendafacil.local",
       SEED_USER_PASSWORD: "senha-teste-123",
       SEED_USER_NAME: "Conta de Teste",
