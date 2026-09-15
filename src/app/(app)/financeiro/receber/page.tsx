@@ -6,9 +6,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 import { markSalePaidAction } from "@/actions/sales";
 import { formatBRL, round2 } from "@/lib/calc";
+import { syncOverdueSales } from "@/lib/receivables";
 
 export default async function ContasReceberPage() {
   const user = await requireUser();
+  await syncOverdueSales(user.id);
+
   const pending = await prisma.sale.findMany({
     where: { userId: user.id, receiptType: "APRAZO", status: { in: ["PENDENTE", "ATRASADO"] } },
     include: { customer: true },
@@ -25,9 +28,9 @@ export default async function ContasReceberPage() {
 
   const totalPendente = round2(pending.reduce((s, sale) => s + sale.totalCharged, 0));
   const venceEstaSemana = pending.filter(
-    (s) => s.dueDate && s.dueDate >= startOfToday && s.dueDate <= endOfWeek
+    (s) => s.status === "PENDENTE" && s.dueDate && s.dueDate >= startOfToday && s.dueDate <= endOfWeek
   );
-  const atrasados = pending.filter((s) => s.dueDate && s.dueDate < startOfToday);
+  const atrasados = pending.filter((s) => s.status === "ATRASADO");
 
   const recebidoHoje = await prisma.sale.findMany({
     where: {
@@ -77,7 +80,7 @@ export default async function ContasReceberPage() {
               </thead>
               <tbody>
                 {pending.map((s) => {
-                  const late = s.dueDate && s.dueDate < startOfToday;
+                  const late = s.status === "ATRASADO";
                   return (
                     <tr key={s.id} className="border-t border-border">
                       <td className="px-4 py-3 font-medium">

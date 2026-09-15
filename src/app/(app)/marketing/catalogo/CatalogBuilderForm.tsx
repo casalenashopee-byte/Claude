@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { ImageUploadButton } from "@/components/ui/ImageUploadButton";
 import { CatalogPreview, type CatalogSettingsLike, type CatalogProductLike } from "@/components/catalog/CatalogPreview";
 import type { FormState } from "@/actions/catalog";
 
@@ -20,7 +21,6 @@ export function CatalogBuilderForm({
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
   const [settings, setSettings] = useState<CatalogSettingsLike & { slug: string }>(defaults);
-  const [highlightUrl, setHighlightUrl] = useState("");
   const [faqQ, setFaqQ] = useState("");
   const [faqA, setFaqA] = useState("");
 
@@ -116,46 +116,55 @@ export function CatalogBuilderForm({
             </FieldGroup>
           </div>
           <FieldGroup>
-            <Label>Foto de perfil (URL)</Label>
-            <Input
-              name="profilePhoto"
-              value={settings.profilePhoto ?? ""}
-              onChange={(e) => set("profilePhoto", e.target.value)}
-            />
+            <Label>Foto de perfil</Label>
+            <div className="flex items-center gap-3">
+              {settings.profilePhoto && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={settings.profilePhoto} alt="" className="h-12 w-12 rounded-full object-cover border border-border" />
+              )}
+              <ImageUploadButton
+                label={settings.profilePhoto ? "Trocar foto" : "Enviar foto"}
+                onPick={([dataUrl]) => set("profilePhoto", dataUrl)}
+              />
+            </div>
+            <input type="hidden" name="profilePhoto" value={settings.profilePhoto ?? ""} />
           </FieldGroup>
           <FieldGroup>
-            <Label>Banner (URL)</Label>
-            <Input name="banner" value={settings.banner ?? ""} onChange={(e) => set("banner", e.target.value)} />
+            <Label>Banner</Label>
+            <div className="flex items-center gap-3">
+              {settings.banner && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={settings.banner} alt="" className="h-12 w-20 rounded-lg object-cover border border-border" />
+              )}
+              <ImageUploadButton
+                label={settings.banner ? "Trocar banner" : "Enviar banner"}
+                onPick={([dataUrl]) => set("banner", dataUrl)}
+              />
+            </div>
+            <input type="hidden" name="banner" value={settings.banner ?? ""} />
           </FieldGroup>
 
           <FieldGroup>
             <Label>Destaques (estilo Stories)</Label>
-            <div className="flex gap-2">
-              <Input value={highlightUrl} onChange={(e) => setHighlightUrl(e.target.value)} placeholder="https://…" />
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  if (!highlightUrl.trim()) return;
-                  set("highlights", [...settings.highlights, highlightUrl.trim()]);
-                  setHighlightUrl("");
-                }}
-              >
-                Adicionar
-              </Button>
-            </div>
+            <ImageUploadButton
+              label="Adicionar destaque"
+              multiple
+              onPick={(dataUrls) => set("highlights", [...settings.highlights, ...dataUrls])}
+            />
             {settings.highlights.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {settings.highlights.map((url, i) => (
-                  <span key={i} className="flex items-center gap-1 rounded-full bg-surface-muted px-2 py-1 text-xs">
-                    Destaque {i + 1}
+                  <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-12 w-12 rounded-full object-cover border border-border" />
                     <button
                       type="button"
                       onClick={() => set("highlights", settings.highlights.filter((_, idx) => idx !== i))}
+                      className="absolute -right-1 -top-1 rounded-full bg-danger text-white p-0.5"
                     >
-                      <Icon name="X" size={12} />
+                      <Icon name="X" size={10} />
                     </button>
-                  </span>
+                  </div>
                 ))}
               </div>
             )}

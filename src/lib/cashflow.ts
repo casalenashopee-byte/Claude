@@ -73,3 +73,26 @@ export async function getCashFlow(userId: string, start: Date, end: Date) {
 
   return { rows, totals: { entradas, saidas, saldo: round2(entradas - saidas) } };
 }
+
+/**
+ * Saldo de caixa acumulado desde sempre (não só do período) — usado como
+ * proxy de "dinheiro disponível" no Analytics (liquidez operacional).
+ */
+export async function getCashOnHand(userId: string) {
+  const [salesSum, expensesSum, entriesIn, entriesOut] = await Promise.all([
+    prisma.sale.aggregate({ where: { userId, status: "PAGO" }, _sum: { totalCharged: true } }),
+    prisma.expense.aggregate({ where: { userId }, _sum: { amount: true } }),
+    prisma.cashEntry.aggregate({
+      where: { userId, type: "ENTRADA", movesCash: true },
+      _sum: { amount: true },
+    }),
+    prisma.cashEntry.aggregate({
+      where: { userId, type: "SAIDA", movesCash: true },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const entradas = round2((salesSum._sum.totalCharged || 0) + (entriesIn._sum.amount || 0));
+  const saidas = round2((expensesSum._sum.amount || 0) + (entriesOut._sum.amount || 0));
+  return round2(entradas - saidas);
+}

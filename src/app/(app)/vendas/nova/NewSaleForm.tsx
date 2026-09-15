@@ -5,9 +5,17 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { FieldGroup, Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { formatBRL, paymentFee, round2 } from "@/lib/calc";
+import { parseVariations, combinationExtraPrice, combinationLabel } from "@/lib/variations";
 import type { FormState } from "@/actions/sales";
 
-type Product = { id: string; name: string; retailPrice: number; costPrice: number; unit: string };
+type Product = {
+  id: string;
+  name: string;
+  retailPrice: number;
+  costPrice: number;
+  unit: string;
+  variations: string;
+};
 type Channel = { id: string; name: string };
 type PaymentMethod = { id: string; name: string; feePct: number; feeFixed: number };
 type Customer = { id: string; name: string };
@@ -32,6 +40,8 @@ export function NewSaleForm({
 
   const [items, setItems] = useState<Item[]>([]);
   const [productPick, setProductPick] = useState("");
+  const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<Record<string, string>>({});
 
   const [channelId, setChannelId] = useState(channels[0]?.id || "");
   const [customerMode, setCustomerMode] = useState<"none" | "existing" | "free">("none");
@@ -96,6 +106,18 @@ export function NewSaleForm({
   function addProduct() {
     const product = products.find((p) => p.id === productPick);
     if (!product) return;
+
+    const attrs = parseVariations(product.variations);
+    if (attrs.length > 0) {
+      // Produto com variações — abre o seletor de combinação em vez de adicionar direto.
+      setPendingProduct(product);
+      setPendingSelection(
+        Object.fromEntries(attrs.map((a) => [a.name, a.options[0]?.value || ""]))
+      );
+      setProductPick("");
+      return;
+    }
+
     setItems((prev) => [
       ...prev,
       {
@@ -107,6 +129,27 @@ export function NewSaleForm({
       },
     ]);
     setProductPick("");
+  }
+
+  function confirmVariation() {
+    if (!pendingProduct) return;
+    const attrs = parseVariations(pendingProduct.variations);
+    const extra = combinationExtraPrice(attrs, pendingSelection);
+    const price = extra !== null ? round2(pendingProduct.retailPrice + extra) : pendingProduct.retailPrice;
+    const label = combinationLabel(pendingSelection);
+
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: pendingProduct.id,
+        name: label ? `${pendingProduct.name} (${label})` : pendingProduct.name,
+        qty: 1,
+        price,
+        cost: pendingProduct.costPrice,
+      },
+    ]);
+    setPendingProduct(null);
+    setPendingSelection({});
   }
 
   function addCustomItem() {
@@ -134,6 +177,16 @@ export function NewSaleForm({
             Item avulso
           </Button>
         </div>
+
+        {pendingProduct && (
+          <VariationPicker
+            product={pendingProduct}
+            selection={pendingSelection}
+            onChange={setPendingSelection}
+            onConfirm={confirmVariation}
+            onCancel={() => setPendingProduct(null)}
+          />
+        )}
 
         {items.length > 0 && (
           <div className="overflow-x-auto">
@@ -421,5 +474,60 @@ export function NewSaleForm({
         </div>
       </div>
     </form>
+  );
+}
+
+function VariationPicker({
+  product,
+  selection,
+  onChange,
+  onConfirm,
+  onCancel,
+}: {
+  product: Product;
+  selection: Record<string, string>;
+  onChange: (selection: Record<string, string>) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const attrs = parseVariations(product.variations);
+  const extra = combinationExtraPrice(attrs, selection);
+  const price = extra !== null ? round2(product.retailPrice + extra) : product.retailPrice;
+
+  return (
+    <div className="rounded-xl border border-brand/40 bg-brand-soft p-4 space-y-3">
+      <p className="text-sm font-medium">
+        Escolha a variação de <strong>{product.name}</strong>
+      </p>
+      <div className="flex flex-wrap gap-3">
+        {attrs.map((attr) => (
+          <div key={attr.name}>
+            <label className="mb-1 block text-xs text-muted">{attr.name}</label>
+            <Select
+              value={selection[attr.name] || ""}
+              onChange={(e) => onChange({ ...selection, [attr.name]: e.target.value })}
+              className="min-w-[140px]"
+            >
+              {attr.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.value}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between pt-1">
+        <p className="text-sm font-medium">Preço: {formatBRL(price)}</p>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button type="button" size="sm" onClick={onConfirm}>
+            Adicionar ao carrinho
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -12,6 +12,7 @@ ferramentas como o VendaMax.
 - **Tailwind CSS v4**
 - **Prisma + SQLite** (banco em arquivo único, fácil de rodar em qualquer lugar)
 - Autenticação própria (cookie de sessão assinado com JWT + bcrypt), sem serviços externos
+- App instalável (PWA) — "adicionar à tela de início" no celular
 
 ## Como rodar localmente
 
@@ -40,32 +41,93 @@ uma conta em `/registrar` se não rodou o seed).
 - `npm run db:seed` — roda `prisma/seed.ts`
 - `npm run db:studio` — abre o Prisma Studio para inspecionar o banco
 
+## Deploy em produção
+
+### Opção 1 — Docker (recomendado para self-host: VPS, Fly.io, Railway…)
+
+O `Dockerfile` gera uma imagem enxuta (Next.js standalone) e persiste o
+banco SQLite num volume, então os dados sobrevivem a reinícios/atualizações
+do container.
+
+```bash
+cp .env.example .env
+echo "AUTH_SECRET=$(openssl rand -hex 32)" >> .env
+
+docker compose up -d --build
+```
+
+Isso sobe o app em `http://localhost:3000`, roda as migrações
+automaticamente no boot (`docker-entrypoint.sh`) e guarda o banco no volume
+`vendafacil-data`. Crie sua conta em `/registrar` (o script de seed não roda
+dentro do container — ele depende de `tsx`, que fica só no ambiente de
+desenvolvimento).
+
+Variáveis de SMTP (opcionais, para o "esqueci minha senha" enviar e-mail de
+verdade) podem ser definidas no `.env` antes do `docker compose up` — veja
+`.env.example`.
+
+> **Importante:** SQLite não funciona em ambientes serverless (Vercel,
+> Netlify Functions…) porque o sistema de arquivos não é persistente entre
+> execuções. Para esses ambientes, use a opção 2 (Postgres) — ou hospede
+> este Dockerfile num VPS/Fly.io/Railway, que têm disco persistente.
+
+### Opção 2 — Trocar para Postgres (necessário para deploy serverless)
+
+1. Em `prisma/schema.prisma`, troque o datasource:
+   ```prisma
+   datasource db {
+     provider = "postgresql"
+     url      = env("DATABASE_URL")
+   }
+   ```
+2. Aponte `DATABASE_URL` para seu Postgres (Neon, Supabase, RDS…):
+   `postgresql://usuario:senha@host:5432/banco`
+3. Rode `npx prisma migrate deploy` (as migrações existentes são
+   compatíveis — os tipos usados no schema são portáveis entre SQLite e
+   Postgres).
+4. Publique normalmente na plataforma serverless de sua preferência.
+
+## CI
+
+`.github/workflows/ci.yml` roda lint, typecheck e build a cada push/PR — o
+mesmo `npx prisma generate` + `npm run build` que você rodaria localmente.
+
 ## Estrutura
 
 - `prisma/schema.prisma` — modelo de dados completo (produtos, vendas,
-  serviços, financeiro, catálogo, loja, indicações…)
+  serviços, financeiro, catálogo, loja, indicações, reset de senha…)
 - `src/actions/*` — Server Actions (uma por domínio) com toda a regra de negócio
 - `src/lib/calc.ts` — cálculo de margem, taxas de pagamento e lucro líquido
 - `src/lib/analytics.ts` / `src/lib/dashboard.ts` / `src/lib/cashflow.ts` —
   agregações financeiras
+- `src/lib/image.ts` — compressão/redimensionamento de fotos no navegador
+  antes de salvar (sem depender de um serviço de upload externo)
 - `src/app/(app)/*` — telas autenticadas (sidebar com os mesmos grupos do
   produto de referência: Menu principal, Financeiro, Marketing, Cadastros,
   Configuração)
 - `src/app/c/[slug]` — catálogo público (vitrine, sem carrinho)
 - `src/app/loja/[slug]` — loja virtual pública (carrinho + checkout via WhatsApp)
+- `src/app/esqueci-senha` / `src/app/redefinir-senha/[token]` — recuperação de senha
 
-## Simplificações conscientes desta primeira versão
+## Simplificações conscientes desta versão
 
 - Não há gateway de pagamento nem cobrança automática de assinatura — todas
   as contas rodam com todos os recursos liberados (sem bloqueio por plano).
-- Fotos de produto/catálogo são por URL (sem upload de arquivo/CDN).
-- Giro de estoque, liquidez e ciclo de caixa no Analytics usam o
-  estoque/caixa **atuais** como aproximação (o produto não guarda histórico
-  diário de saldo).
+- Fotos são enviadas do dispositivo e salvas comprimidas no próprio banco
+  (sem CDN/bucket externo) — ótimo para o volume de um pequeno vendedor,
+  mas não é a arquitetura ideal para um catálogo com milhares de fotos.
+- "Esqueci minha senha" envia e-mail de verdade só se você configurar SMTP
+  no `.env`; sem isso, o link de redefinição é impresso no log do servidor
+  (o self-hoster consegue pegar o link ali).
+- Giro de estoque usa a média entre estoque inicial (reconstruído a partir
+  do que foi vendido no período) e estoque atual — não há uma correção
+  manual de quantidade auditada, então um ajuste manual no meio do período
+  não entra na conta.
 - O saque do "Indique e ganhe" apenas registra a solicitação — não há PIX
   automático.
-- Variações de produto (cor/tamanho) calculam a pré-visualização das
-  combinações, mas ainda não são selecionáveis dentro de uma venda.
+- Produtos/clientes com muitos registros usam paginação simples
+  (20 por página); os filtros de estoque de Produtos ainda comparam em
+  memória (leve até alguns milhares de itens).
 
 Nenhuma dessas simplificações compromete o uso real do dia a dia — são
 pontos naturais de evolução futura.

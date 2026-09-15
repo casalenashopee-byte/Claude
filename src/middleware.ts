@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/login", "/registrar"];
+const PUBLIC_PATHS = ["/login", "/registrar", "/esqueci-senha"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Rotas públicas de vitrine/loja e a home nunca exigem sessão.
+  // Rotas públicas de vitrine/loja, redefinição de senha e a home nunca exigem sessão.
   if (
     pathname.startsWith("/c/") ||
     pathname.startsWith("/loja/") ||
+    pathname.startsWith("/redefinir-senha/") ||
     pathname === "/" ||
     pathname.startsWith("/api/public")
   ) {
@@ -38,6 +39,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|webmanifest|json|txt|xml)$).*)",
   ],
 };

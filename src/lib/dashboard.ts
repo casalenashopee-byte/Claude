@@ -1,8 +1,10 @@
 import { prisma } from "./prisma";
 import { round2 } from "./calc";
 import { rangeFromPeriod, type PeriodKey } from "./dateRange";
+import { syncOverdueSales } from "./receivables";
 
 export async function getDashboardData(userId: string, period: PeriodKey) {
+  await syncOverdueSales(userId);
   const { start, end } = rangeFromPeriod(period);
 
   const sales = await prisma.sale.findMany({
@@ -52,13 +54,15 @@ export async function getDashboardData(userId: string, period: PeriodKey) {
     }),
     prisma.sale.findMany({
       where: { userId, receiptType: "APRAZO", status: { in: ["PENDENTE", "ATRASADO"] } },
-      select: { totalCharged: true },
+      select: { totalCharged: true, status: true },
     }),
     prisma.cashEntry.count({ where: { userId } }),
   ]);
 
   const lowStock = lowStockProducts.filter((p) => p.stockQty <= p.lowStockAlert);
   const totalPendingReceivable = round2(pendingReceivables.reduce((s, r) => s + r.totalCharged, 0));
+  const overdue = pendingReceivables.filter((r) => r.status === "ATRASADO");
+  const totalOverdue = round2(overdue.reduce((s, r) => s + r.totalCharged, 0));
 
   const [catalog, saleCountAllTime] = await Promise.all([
     prisma.catalogSettings.findUnique({ where: { userId } }),
@@ -79,6 +83,8 @@ export async function getDashboardData(userId: string, period: PeriodKey) {
     recentSales: sales.slice(0, 6),
     lowStock,
     totalPendingReceivable,
+    overdueCount: overdue.length,
+    totalOverdue,
     steps: {
       hasProduct: productCount > 0,
       hasSale: saleCountAllTime > 0,

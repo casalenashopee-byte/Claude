@@ -44,3 +44,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .tmp/
+
+# playwright (testes e2e)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

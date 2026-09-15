@@ -34,6 +34,20 @@ export default async function DashboardPage({
 
       <PrimeirosPassos steps={data.steps} />
 
+      {data.overdueCount > 0 && (
+        <Link
+          href="/financeiro/receber"
+          className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm hover:brightness-95"
+        >
+          <span className="flex items-center gap-2 font-medium text-danger">
+            <Icon name="AlertTriangle" size={16} />
+            {data.overdueCount} {data.overdueCount === 1 ? "conta atrasada" : "contas atrasadas"} ·{" "}
+            {formatBRL(data.totalOverdue)}
+          </span>
+          <span className="text-danger/80">Ver contas a receber →</span>
+        </Link>
+      )}
+
       <div className="mb-4">
         <PeriodFilter basePath="/dashboard" current={period} />
       </div>

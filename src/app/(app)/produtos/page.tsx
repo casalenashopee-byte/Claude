@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
+import { Pagination, PAGE_SIZE, paginationSkip } from "@/components/ui/Pagination";
 import { deleteProductAction } from "@/actions/products";
 import { formatBRL } from "@/lib/calc";
 import clsx from "clsx";
@@ -23,21 +24,34 @@ const FILTERS = [
 export default async function ProdutosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; f?: string }>;
+  searchParams: Promise<{ q?: string; f?: string; page?: string }>;
 }) {
-  const { q = "", f = "" } = await searchParams;
+  const { q = "", f = "", page: pageRaw } = await searchParams;
+  const page = Math.max(parseInt(pageRaw || "1", 10) || 1, 1);
   const user = await requireUser();
 
-  const products = await prisma.product.findMany({
+  // Os atalhos de filtro (estoque baixo, nunca vendido…) comparam colunas
+  // entre si — mais simples de resolver em memória do que em SQL puro.
+  // Para o catálogo de um pequeno vendedor isso é leve; pesquisa (q) já
+  // reduz o conjunto antes de filtrar.
+  const allMatching = await prisma.product.findMany({
     where: {
       userId: user.id,
-      ...(q ? { name: { contains: q } } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              { sku: { contains: q } },
+              { barcode: { contains: q } },
+            ],
+          }
+        : {}),
     },
     include: { category: true, _count: { select: { saleItems: true } } },
     orderBy: { createdAt: "desc" },
   });
 
-  const filtered = products.filter((p) => {
+  const filtered = allMatching.filter((p) => {
     switch (f) {
       case "out":
         return p.stockQty <= 0;
@@ -53,6 +67,9 @@ export default async function ProdutosPage({
         return true;
     }
   });
+
+  const total = filtered.length;
+  const pageItems = filtered.slice(paginationSkip(page), paginationSkip(page) + PAGE_SIZE);
 
   return (
     <div>
@@ -93,14 +110,14 @@ export default async function ProdutosPage({
 
       {filtered.length === 0 ? (
         <EmptyState
-          title={products.length === 0 ? "Nenhum produto cadastrado" : "Nada encontrado"}
+          title={allMatching.length === 0 ? "Nenhum produto cadastrado" : "Nada encontrado"}
           description={
-            products.length === 0
+            allMatching.length === 0
               ? "Cadastre seu primeiro produto para começar a vender."
               : "Ajuste a busca ou o filtro para ver outros produtos."
           }
-          actionLabel={products.length === 0 ? "Cadastrar produto" : undefined}
-          actionHref={products.length === 0 ? "/produtos/novo" : undefined}
+          actionLabel={allMatching.length === 0 ? "Cadastrar produto" : undefined}
+          actionHref={allMatching.length === 0 ? "/produtos/novo" : undefined}
         />
       ) : (
         <div className="rounded-2xl border border-border bg-surface overflow-hidden overflow-x-auto">
@@ -116,7 +133,7 @@ export default async function ProdutosPage({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => (
+              {pageItems.map((p) => (
                 <tr key={p.id} className="border-t border-border">
                   <td className="px-4 py-3 font-medium">{p.name}</td>
                   <td className="px-4 py-3 text-muted">{p.category?.name || "—"}</td>
@@ -161,6 +178,12 @@ export default async function ProdutosPage({
           </table>
         </div>
       )}
+
+      <Pagination
+        page={page}
+        total={total}
+        buildHref={(n) => `/produtos?f=${f}${q ? `&q=${encodeURIComponent(q)}` : ""}&page=${n}`}
+      />
     </div>
   );
 }

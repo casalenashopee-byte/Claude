@@ -6,9 +6,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { Badge } from "@/components/ui/Badge";
 import { PeriodFilter } from "@/components/PeriodFilter";
+import { Pagination, PAGE_SIZE, paginationSkip } from "@/components/ui/Pagination";
 import { deleteSaleAction, markSalePaidAction } from "@/actions/sales";
 import { formatBRL } from "@/lib/calc";
 import { rangeFromPeriod, type PeriodKey } from "@/lib/dateRange";
+import { syncOverdueSales } from "@/lib/receivables";
 
 const statusTone = {
   PAGO: "brand",
@@ -20,18 +22,27 @@ const statusTone = {
 export default async function VendasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ p?: string }>;
+  searchParams: Promise<{ p?: string; page?: string }>;
 }) {
-  const { p = "30d" } = await searchParams;
+  const { p = "30d", page: pageRaw } = await searchParams;
   const period = (p as PeriodKey) || "30d";
+  const page = Math.max(parseInt(pageRaw || "1", 10) || 1, 1);
   const { start, end } = rangeFromPeriod(period);
 
   const user = await requireUser();
-  const sales = await prisma.sale.findMany({
-    where: { userId: user.id, createdAt: { gte: start, lte: end } },
-    include: { channel: true, paymentMethod: true, customer: true },
-    orderBy: { createdAt: "desc" },
-  });
+  await syncOverdueSales(user.id);
+
+  const where = { userId: user.id, createdAt: { gte: start, lte: end } };
+  const [sales, total] = await Promise.all([
+    prisma.sale.findMany({
+      where,
+      include: { channel: true, paymentMethod: true, customer: true },
+      orderBy: { createdAt: "desc" },
+      skip: paginationSkip(page),
+      take: PAGE_SIZE,
+    }),
+    prisma.sale.count({ where }),
+  ]);
 
   return (
     <div>
@@ -111,6 +122,8 @@ export default async function VendasPage({
           </table>
         </div>
       )}
+
+      <Pagination page={page} total={total} buildHref={(n) => `/vendas?p=${period}&page=${n}`} />
     </div>
   );
 }

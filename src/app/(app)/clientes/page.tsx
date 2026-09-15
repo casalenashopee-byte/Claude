@@ -6,14 +6,41 @@ import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { Icon } from "@/components/ui/Icon";
+import { Pagination, PAGE_SIZE, paginationSkip } from "@/components/ui/Pagination";
 import { deleteCustomerAction } from "@/actions/customers";
 
-export default async function ClientesPage() {
+export default async function ClientesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
+  const { q = "", page: pageRaw } = await searchParams;
+  const page = Math.max(parseInt(pageRaw || "1", 10) || 1, 1);
   const user = await requireUser();
-  const customers = await prisma.customer.findMany({
-    where: { userId: user.id },
-    orderBy: { name: "asc" },
-  });
+
+  const where = {
+    userId: user.id,
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q } },
+            { phone: { contains: q } },
+            { email: { contains: q } },
+            { document: { contains: q } },
+          ],
+        }
+      : {}),
+  };
+
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      orderBy: { name: "asc" },
+      skip: paginationSkip(page),
+      take: PAGE_SIZE,
+    }),
+    prisma.customer.count({ where }),
+  ]);
 
   return (
     <div>
@@ -24,12 +51,25 @@ export default async function ClientesPage() {
         action={<LinkButton href="/clientes/novo">Novo cliente</LinkButton>}
       />
 
+      <form className="mb-4 max-w-sm">
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Buscar por nome, telefone, e-mail ou documento…"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40"
+        />
+      </form>
+
       {customers.length === 0 ? (
         <EmptyState
-          title="Nenhum cliente cadastrado"
-          description="Cadastre clientes para vincular vendas a prazo e ver o histórico de compras."
-          actionLabel="Criar cliente"
-          actionHref="/clientes/novo"
+          title={total === 0 && !q ? "Nenhum cliente cadastrado" : "Nada encontrado"}
+          description={
+            total === 0 && !q
+              ? "Cadastre clientes para vincular vendas a prazo e ver o histórico de compras."
+              : "Ajuste a busca para ver outros clientes."
+          }
+          actionLabel={total === 0 && !q ? "Criar cliente" : undefined}
+          actionHref={total === 0 && !q ? "/clientes/novo" : undefined}
         />
       ) : (
         <div className="rounded-2xl border border-border bg-surface overflow-hidden overflow-x-auto">
@@ -68,6 +108,12 @@ export default async function ClientesPage() {
           </table>
         </div>
       )}
+
+      <Pagination
+        page={page}
+        total={total}
+        buildHref={(n) => `/clientes?${q ? `q=${encodeURIComponent(q)}&` : ""}page=${n}`}
+      />
     </div>
   );
 }

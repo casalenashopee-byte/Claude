@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { FieldGroup, Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { ImageUploadButton } from "@/components/ui/ImageUploadButton";
 import { suggestedPrice, formatBRL } from "@/lib/calc";
 import type { FormState } from "@/actions/products";
 
@@ -66,6 +67,15 @@ export function ProductForm({
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
   const [tab, setTab] = useState<TabKey>("geral");
+
+  // Campos obrigatórios podem estar numa aba escondida — leva o usuário até
+  // ela em vez de deixar o erro sem contexto.
+  useEffect(() => {
+    if (!state?.error) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza com o resultado da server action, não com estado local
+    if (state.error.toLowerCase().includes("varejo")) setTab("financeiro");
+    else if (state.error.toLowerCase().includes("nome")) setTab("geral");
+  }, [state]);
 
   const [type, setType] = useState(defaults?.type || "FISICO");
   const [costPrice, setCostPrice] = useState(String(defaults?.costPrice ?? ""));
@@ -148,7 +158,7 @@ export function ProductForm({
           </FieldGroup>
           <FieldGroup>
             <Label>Nome</Label>
-            <Input name="name" required autoFocus defaultValue={defaults?.name} />
+            <Input name="name" autoFocus defaultValue={defaults?.name} />
           </FieldGroup>
           <div className="grid grid-cols-2 gap-3">
             <FieldGroup>
@@ -182,16 +192,24 @@ export function ProductForm({
           </label>
 
           <FieldGroup>
-            <Label hint="cole a URL de uma imagem">Fotos</Label>
-            <div className="flex gap-2">
+            <Label>Fotos</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <ImageUploadButton
+                label="Enviar fotos do dispositivo"
+                multiple
+                onPick={(dataUrls) => setImages((prev) => [...prev, ...dataUrls])}
+              />
+              <span className="text-xs text-muted">ou</span>
               <Input
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://…"
+                placeholder="cole uma URL"
+                className="max-w-[220px]"
               />
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 onClick={() => {
                   if (!imageUrl.trim()) return;
                   setImages((prev) => [...prev, imageUrl.trim()]);
@@ -274,7 +292,6 @@ export function ProductForm({
               step="0.01"
               min="0"
               name="retailPrice"
-              required
               value={retailPrice}
               onChange={(e) => setRetailPrice(e.target.value)}
             />

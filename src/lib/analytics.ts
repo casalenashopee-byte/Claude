@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { round2 } from "./calc";
 import { rangeFromPeriod, previousRange, type PeriodKey } from "./dateRange";
+import { getCashOnHand } from "./cashflow";
 
 const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
@@ -51,13 +52,32 @@ export async function getAnalytics(userId: string, period: PeriodKey) {
   const despesasPctReceita = pct(current.expensesSum, current.revenue);
   const taxasPctReceita = pct(current.fees, current.revenue);
 
-  // Giro & ciclo (aproximado pelo estoque/recebíveis atuais)
+  // Giro & ciclo — estoque médio do período (inicial + final) / 2, a fórmula
+  // padrão de giro de estoque. O "inicial" é reconstruído somando de volta
+  // ao estoque atual tudo que foi vendido no período (assume que nenhum
+  // ajuste manual de estoque aconteceu no meio do caminho — a única lacuna
+  // real seria uma correção manual de quantidade, que o produto não audita).
   const products = await prisma.product.findMany({
     where: { userId, type: "FISICO" },
-    select: { costPrice: true, stockQty: true },
+    select: { id: true, costPrice: true, stockQty: true },
   });
-  const inventoryValue = round2(products.reduce((s, p) => s + p.costPrice * p.stockQty, 0));
-  const giro = inventoryValue > 0 ? round2(current.cost / inventoryValue) : 0;
+  const soldQtyByProduct = await prisma.saleItem.groupBy({
+    by: ["productId"],
+    where: {
+      productId: { not: null },
+      sale: { userId, createdAt: { gte: start, lte: end }, status: { not: "CANCELADO" } },
+    },
+    _sum: { qty: true },
+  });
+  const soldQtyMap = new Map(soldQtyByProduct.map((r) => [r.productId, r._sum.qty || 0]));
+
+  const endingInventoryValue = round2(products.reduce((s, p) => s + p.costPrice * p.stockQty, 0));
+  const beginningInventoryValue = round2(
+    products.reduce((s, p) => s + p.costPrice * (p.stockQty + (soldQtyMap.get(p.id) || 0)), 0)
+  );
+  const avgInventoryValue = round2((beginningInventoryValue + endingInventoryValue) / 2);
+
+  const giro = avgInventoryValue > 0 ? round2(current.cost / avgInventoryValue) : 0;
   const diasEstoque = giro > 0 ? round2(days / giro) : 0;
 
   const pendingReceivable = await prisma.sale.aggregate({
@@ -71,16 +91,11 @@ export async function getAnalytics(userId: string, period: PeriodKey) {
   // Rentabilidade & liquidez
   const capitalOperacional = round2(current.cost + current.expensesSum);
   const retornoCapitalOperacional = pct(current.netProfit, capitalOperacional);
-  const retornoEstoque = pct(current.netProfit, inventoryValue);
+  const retornoEstoque = pct(current.netProfit, avgInventoryValue);
 
-  const cashBalance = await prisma.sale.aggregate({
-    where: { userId, status: "PAGO" },
-    _sum: { totalCharged: true },
-  });
+  const cashOnHand = await getCashOnHand(userId);
   const liquidezOperacional =
-    current.expensesSum > 0
-      ? round2((cashBalance._sum.totalCharged || 0) / current.expensesSum)
-      : 0;
+    current.expensesSum > 0 ? round2(cashOnHand / current.expensesSum) : 0;
   const liquidezReceber = pct(receivable, current.revenue);
   const coberturaDespesas =
     current.expensesSum > 0 ? round2(current.revenue / current.expensesSum) : 0;

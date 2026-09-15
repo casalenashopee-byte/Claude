@@ -11,7 +11,7 @@ export default async function NovaVendaPage() {
     prisma.product.findMany({
       where: { userId: user.id, status: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, retailPrice: true, costPrice: true, unit: true },
+      select: { id: true, name: true, retailPrice: true, costPrice: true, unit: true, variations: true },
     }),
     prisma.channel.findMany({ where: { userId: user.id, active: true }, orderBy: { name: "asc" } }),
     prisma.paymentMethod.findMany({ where: { userId: user.id, active: true }, orderBy: { name: "asc" } }),
