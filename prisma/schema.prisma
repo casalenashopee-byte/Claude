@@ -1,0 +1,386 @@
+// Schema do banco de dados — VendaFácil
+// SQLite local (arquivo único, fácil de rodar em qualquer lugar)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductType {
+  FISICO
+  SERVICO
+  DIGITAL
+}
+
+enum ReceiptType {
+  AVISTA
+  APRAZO
+}
+
+enum SaleStatus {
+  PAGO
+  PENDENTE
+  ATRASADO
+  CANCELADO
+}
+
+enum QuoteStatus {
+  RASCUNHO
+  ENVIADO
+  APROVADO
+  RECUSADO
+  EXPIRADO
+}
+
+enum ServiceOrderStatus {
+  ABERTA
+  EM_ANDAMENTO
+  CONCLUIDA
+  CANCELADA
+}
+
+enum SupplierStatus {
+  ATIVO
+  PENDENTE
+  INATIVO
+}
+
+enum CashEntryType {
+  ENTRADA
+  SAIDA
+}
+
+enum PlanName {
+  FREE
+  BASICO
+  PRO
+  MAX
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String?
+  companyName   String?
+  companyDoc    String?  // CNPJ/CPF para cabeçalho de recibo
+  theme         String   @default("light") // light | dark
+  planName      PlanName @default(PRO)
+  trialEndsAt   DateTime?
+  referralCode  String   @unique @default(cuid())
+  referredById  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  categories      Category[]
+  products        Product[]
+  channels        Channel[]
+  paymentMethods  PaymentMethod[]
+  customers       Customer[]
+  suppliers       Supplier[]
+  sales           Sale[]
+  quotes          Quote[]
+  serviceOrders   ServiceOrder[]
+  cashEntries     CashEntry[]
+  expenses        Expense[]
+  catalogSettings CatalogSettings?
+  storeSettings   StoreSettings?
+  referralWallet  ReferralWallet?
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime  @default(now())
+  products  Product[]
+
+  @@index([userId])
+}
+
+model Channel {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  sales     Sale[]
+
+  @@index([userId])
+}
+
+model PaymentMethod {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  feePct        Float    @default(0)
+  feeFixed      Float    @default(0)
+  installments  String   @default("[]") // JSON [{n, feePct}]
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  sales         Sale[]
+
+  @@index([userId])
+}
+
+model Product {
+  id               String      @id @default(cuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type             ProductType @default(FISICO)
+  name             String
+  brand            String?
+  status           Boolean     @default(true)
+  categoryId       String?
+  category         Category?   @relation(fields: [categoryId], references: [id])
+  description      String?
+  images           String      @default("[]") // JSON array de URLs
+
+  costPrice        Float       @default(0)
+  targetMarginPct  Float       @default(0)
+  retailPrice      Float       @default(0)
+  wholesalePrice   Float?
+  hasWholesale     Boolean     @default(false)
+
+  stockQty         Float       @default(0)
+  lowStockAlert    Float       @default(0)
+  unit             String      @default("un")
+  weight           Float?
+  dimensions       String?
+
+  sku              String?
+  barcode          String?
+
+  variations       String      @default("[]") // JSON [{name, options:[{value, price}]}]
+
+  supplierId       String?
+  supplier         Supplier?   @relation(fields: [supplierId], references: [id])
+  purchaseDate     DateTime?
+  supplierNotes    String?
+
+  channelIds       String      @default("[]") // JSON array de ids de canal
+  inCatalog        Boolean     @default(false)
+  inStore          Boolean     @default(false)
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  saleItems        SaleItem[]
+
+  @@index([userId])
+  @@index([categoryId])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  phone     String?
+  document  String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  sales         Sale[]
+  quotes        Quote[]
+  serviceOrders ServiceOrder[]
+
+  @@index([userId])
+}
+
+model Supplier {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  document  String?
+  category  String?
+  city      String?
+  state     String?
+  status    SupplierStatus @default(ATIVO)
+  createdAt DateTime       @default(now())
+  products  Product[]
+
+  @@index([userId])
+}
+
+model Sale {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  customerName   String?      // nome livre quando não vinculado a cadastro
+  channelId      String
+  channel        Channel      @relation(fields: [channelId], references: [id])
+  paymentMethodId String
+  paymentMethod  PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  paymentSplit   String       @default("[]") // JSON [{methodId, amount}] quando dividido
+
+  receiptType    ReceiptType  @default(AVISTA)
+  dueDate        DateTime?
+  status         SaleStatus   @default(PAGO)
+
+  discount       Float        @default(0)
+  extraCosts     Float        @default(0)
+  extraCostsDesc String?
+  notes          String?
+
+  subtotal       Float        @default(0) // soma dos itens
+  totalCost      Float        @default(0) // custo total dos itens
+  feeAmount      Float        @default(0) // taxa do meio de pagamento
+  totalCharged   Float        @default(0) // valor cobrado do cliente
+  netProfit      Float        @default(0) // lucro líquido
+
+  createdAt      DateTime     @default(now())
+
+  items SaleItem[]
+
+  @@index([userId])
+  @@index([channelId])
+  @@index([paymentMethodId])
+  @@index([customerId])
+}
+
+model SaleItem {
+  id         String  @id @default(cuid())
+  saleId     String
+  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id])
+  name       String
+  qty        Float
+  price      Float
+  cost       Float   @default(0)
+  subtotal   Float
+
+  @@index([saleId])
+}
+
+model Quote {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerId    String?
+  customer      Customer?   @relation(fields: [customerId], references: [id])
+  customerName  String?
+  contact       String?
+  document      String?
+  issueDate     DateTime    @default(now())
+  validityDays  Int         @default(7)
+  items         String      @default("[]") // JSON [{name, qty, price}]
+  total         Float       @default(0)
+  notes         String?
+  terms         String?
+  status        QuoteStatus @default(RASCUNHO)
+  createdAt     DateTime    @default(now())
+
+  @@index([userId])
+}
+
+model ServiceOrder {
+  id               String              @id @default(cuid())
+  userId           String
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerId       String?
+  customer         Customer?           @relation(fields: [customerId], references: [id])
+  customerName     String?
+  equipment        String?
+  imei             String?
+  reportedProblem  String?
+  items            String              @default("[]") // JSON [{type: servico|peca, name, qty, price}]
+  total            Float               @default(0)
+  status           ServiceOrderStatus  @default(ABERTA)
+  createdAt        DateTime            @default(now())
+  closedAt         DateTime?
+
+  @@index([userId])
+}
+
+model CashEntry {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           CashEntryType
+  amount         Float
+  category       String?
+  description    String?
+  date           DateTime      @default(now())
+  impactsProfit  Boolean       @default(false)
+  movesCash      Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+
+  @@index([userId])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    String
+  description String?
+  amount      Float
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model CatalogSettings {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug             String   @unique
+  title            String?
+  description      String?
+  whatsapp         String?
+  instagram        String?
+  active           Boolean  @default(true)
+  showStock        Boolean  @default(true)
+  layout           String   @default("grid") // grid | list
+  background       String   @default("#F8F7F4")
+  cardColor        String   @default("#FFFFFF")
+  textColor        String   @default("#1A1A1A")
+  priceColor       String   @default("#1F6F4A")
+  buttonColor      String   @default("#1F6F4A")
+  profilePhoto     String?
+  name             String?
+  profession       String?
+  banner           String?
+  highlights       String   @default("[]") // JSON array de URLs (estilo stories)
+  faq              String   @default("[]") // JSON [{q,a}]
+  productIds       String   @default("[]") // JSON array — ordem de exibição
+  removeBranding   Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+}
+
+model StoreSettings {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  active         Boolean  @default(false)
+  sections       String   @default("[]") // JSON [{key, enabled, order}]
+  shippingFixed  Float?
+  paymentInfo    String?
+  coupons        String   @default("[]") // JSON [{code, type, value, active}]
+  termsText      String?
+  updatedAt      DateTime @updatedAt
+}
+
+model ReferralWallet {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balanceAvailable Float    @default(0)
+  totalEarned      Float    @default(0)
+  totalWithdrawn   Float    @default(0)
+  updatedAt        DateTime @updatedAt
+}
