@@ -42,6 +42,16 @@ export async function updateChannelAction(
 export async function deleteChannelAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") || "");
+
+  const salesCount = await prisma.sale.count({ where: { channelId: id, userId: user.id } });
+  if (salesCount > 0) {
+    // Canal com vendas vinculadas não pode ser removido (evita erro de integridade) —
+    // desativa em vez de apagar, o que já o tira das opções de nova venda.
+    await prisma.channel.updateMany({ where: { id, userId: user.id }, data: { active: false } });
+    revalidatePath("/canais");
+    redirect("/canais?erro=canal-em-uso");
+  }
+
   await prisma.channel.deleteMany({ where: { id, userId: user.id } });
   revalidatePath("/canais");
 }

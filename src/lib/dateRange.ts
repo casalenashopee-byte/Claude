@@ -1,3 +1,13 @@
+/**
+ * Converte o valor de um <input type="date"> ("2026-09-15") para meio-dia
+ * local, evitando que a meia-noite UTC vire "dia anterior" na exibição em
+ * fusos negativos (Brasil inteiro é UTC-3/-4/-5) — sem isso, uma data digitada
+ * como 15/09 podia ser salva e exibida como 14/09.
+ */
+export function parseDateInput(value: string) {
+  return new Date(`${value}T12:00:00`);
+}
+
 export type PeriodKey =
   | "hoje"
   | "7d"

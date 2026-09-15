@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { calcSplitFee, round2 } from "@/lib/calc";
+import { parseDateInput } from "@/lib/dateRange";
 import { ReceiptType, SaleStatus } from "@prisma/client";
 
 export type FormState = { error?: string } | undefined;
@@ -44,7 +45,7 @@ export async function createSaleAction(
   const customerName = String(formData.get("customerName") || "").trim() || null;
   const receiptType = String(formData.get("receiptType") || "AVISTA") as ReceiptType;
   const dueDateRaw = String(formData.get("dueDate") || "");
-  const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
+  const dueDate = dueDateRaw ? parseDateInput(dueDateRaw) : null;
   const discount = parseFloat(String(formData.get("discount") || "0")) || 0;
   const extraCosts = parseFloat(String(formData.get("extraCosts") || "0")) || 0;
   const extraCostsDesc = String(formData.get("extraCostsDesc") || "").trim() || null;

@@ -7,9 +7,15 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { ToggleStatusButton } from "@/components/ui/ToggleStatusButton";
 import { Icon } from "@/components/ui/Icon";
+import { InlineAlert } from "@/components/ui/InlineAlert";
 import { deleteChannelAction, toggleChannelActiveAction } from "@/actions/channels";
 
-export default async function CanaisPage() {
+export default async function CanaisPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ erro?: string }>;
+}) {
+  const { erro } = await searchParams;
   const user = await requireUser();
   const channels = await prisma.channel.findMany({
     where: { userId: user.id },
@@ -25,6 +31,12 @@ export default async function CanaisPage() {
         description="Onde a venda aconteceu — Instagram, loja física, marketplace…"
         action={<LinkButton href="/canais/novo">Novo canal</LinkButton>}
       />
+
+      {erro === "canal-em-uso" && (
+        <InlineAlert>
+          Esse canal já tem vendas vinculadas e não pode ser excluído — ele foi desativado em vez disso.
+        </InlineAlert>
+      )}
 
       {channels.length === 0 ? (
         <EmptyState

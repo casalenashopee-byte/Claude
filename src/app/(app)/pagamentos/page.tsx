@@ -6,9 +6,15 @@ import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { Icon } from "@/components/ui/Icon";
+import { InlineAlert } from "@/components/ui/InlineAlert";
 import { deletePaymentMethodAction } from "@/actions/paymentMethods";
 
-export default async function PagamentosPage() {
+export default async function PagamentosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ erro?: string }>;
+}) {
+  const { erro } = await searchParams;
   const user = await requireUser();
   const methods = await prisma.paymentMethod.findMany({
     where: { userId: user.id },
@@ -23,6 +29,12 @@ export default async function PagamentosPage() {
         description="Cada método tem taxa percentual + taxa fixa. Essas taxas alimentam o cálculo de lucro em toda venda."
         action={<LinkButton href="/pagamentos/novo">Nova forma de pagamento</LinkButton>}
       />
+
+      {erro === "forma-em-uso" && (
+        <InlineAlert>
+          Essa forma de pagamento já tem vendas vinculadas e não pode ser excluída — ela foi desativada em vez disso.
+        </InlineAlert>
+      )}
 
       {methods.length === 0 ? (
         <EmptyState

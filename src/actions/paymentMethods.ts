@@ -50,6 +50,15 @@ export async function updatePaymentMethodAction(
 export async function deletePaymentMethodAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") || "");
+
+  const salesCount = await prisma.sale.count({ where: { paymentMethodId: id, userId: user.id } });
+  if (salesCount > 0) {
+    // Forma de pagamento com vendas vinculadas não pode ser removida — desativa em vez de apagar.
+    await prisma.paymentMethod.updateMany({ where: { id, userId: user.id }, data: { active: false } });
+    revalidatePath("/pagamentos");
+    redirect("/pagamentos?erro=forma-em-uso");
+  }
+
   await prisma.paymentMethod.deleteMany({ where: { id, userId: user.id } });
   revalidatePath("/pagamentos");
 }

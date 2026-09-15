@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { parseDateInput } from "@/lib/dateRange";
 import { CashEntryType } from "@prisma/client";
 
 export type FormState = { error?: string } | undefined;
@@ -18,7 +19,7 @@ export async function createCashEntryAction(
   const category = String(formData.get("category") || "").trim() || null;
   const description = String(formData.get("description") || "").trim() || null;
   const dateRaw = String(formData.get("date") || "");
-  const date = dateRaw ? new Date(dateRaw) : new Date();
+  const date = dateRaw ? parseDateInput(dateRaw) : new Date();
   const impactsProfit = formData.get("impactsProfit") === "on";
   const movesCash = formData.get("movesCash") === "on";
 

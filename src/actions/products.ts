@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { parseDateInput } from "@/lib/dateRange";
 import { ProductType } from "@prisma/client";
 
 export type FormState = { error?: string } | undefined;
@@ -48,7 +49,7 @@ function parseFields(formData: FormData) {
 
   const supplierId = String(formData.get("supplierId") || "") || null;
   const purchaseDateRaw = String(formData.get("purchaseDate") || "");
-  const purchaseDate = purchaseDateRaw ? new Date(purchaseDateRaw) : null;
+  const purchaseDate = purchaseDateRaw ? parseDateInput(purchaseDateRaw) : null;
   const supplierNotes = String(formData.get("supplierNotes") || "").trim() || null;
 
   const channelIds = String(formData.get("channelIds") || "[]");
